@@ -34,8 +34,8 @@ http://localhost:5050/callback/microsoft
 For deployment, set `BASE_URL` to the public HTTPS URL and use:
 
 ```text
-https://your-domain.example/callback/google
-https://your-domain.example/callback/microsoft
+https://oauth-hub.apps.railpush.com/callback/google
+https://oauth-hub.apps.railpush.com/callback/microsoft
 ```
 
 ## Google setup
