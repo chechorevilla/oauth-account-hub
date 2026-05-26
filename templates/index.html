@@ -48,14 +48,7 @@
             {% if providers.google %}
               <a class="button" href="{{ url_for('connect', provider='google') }}">Connect</a>
             {% else %}
-              <details class="setup">
-                <summary>Set up</summary>
-                <form method="post" action="{{ url_for('save_provider_config', provider='google') }}">
-                  <input name="client_id" value="{{ provider_configs.google.client_id }}" placeholder="Client ID">
-                  <input name="client_secret" type="password" placeholder="Client Secret">
-                  <button type="submit">Save</button>
-                </form>
-              </details>
+              <span class="disabled">Setup pending</span>
             {% endif %}
           </article>
 
@@ -67,33 +60,7 @@
             {% if providers.microsoft %}
               <a class="button" href="{{ url_for('connect', provider='microsoft') }}">Connect</a>
             {% else %}
-              <details class="setup">
-                <summary>Set up</summary>
-                <form method="post" action="{{ url_for('save_provider_config', provider='microsoft') }}">
-                  <input name="client_id" value="{{ provider_configs.microsoft.client_id }}" placeholder="Client ID">
-                  <input name="client_secret" type="password" placeholder="Client Secret">
-                  <button type="submit">Save</button>
-                </form>
-              </details>
-            {% endif %}
-          </article>
-
-          <article class="panel bridge-card">
-            <div>
-              <span class="provider-icon github">GH</span>
-              <h2>GitHub</h2>
-            </div>
-            {% if providers.github %}
-              <a class="button" href="{{ url_for('connect', provider='github') }}">Connect</a>
-            {% else %}
-              <details class="setup">
-                <summary>Set up</summary>
-                <form method="post" action="{{ url_for('save_provider_config', provider='github') }}">
-                  <input name="client_id" value="{{ provider_configs.github.client_id }}" placeholder="Client ID">
-                  <input name="client_secret" type="password" placeholder="Client Secret">
-                  <button type="submit">Save</button>
-                </form>
-              </details>
+              <span class="disabled">Setup pending</span>
             {% endif %}
           </article>
         </section>
