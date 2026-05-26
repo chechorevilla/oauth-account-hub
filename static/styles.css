@@ -29,9 +29,8 @@ body {
 }
 
 .topbar,
-.provider,
 .section-head,
-.row {
+.account-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -78,11 +77,48 @@ small,
   padding: 22px;
 }
 
-.provider-grid {
+.bridge-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   margin: 28px 0 16px;
+}
+
+.bridge-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.bridge-card h2 {
+  margin-bottom: 0;
+}
+
+.provider-icon {
+  align-items: center;
+  border-radius: 8px;
+  color: white;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 800;
+  height: 36px;
+  justify-content: center;
+  margin-bottom: 12px;
+  width: 36px;
+}
+
+.provider-icon.google {
+  background: #1a73e8;
+}
+
+.provider-icon.microsoft {
+  background: #107c10;
+}
+
+.provider-icon.github {
+  background: #24292f;
+  font-size: 12px;
 }
 
 .accounts {
@@ -168,30 +204,18 @@ button:hover,
   background: var(--error-bg);
 }
 
-.table {
+.account-list {
   margin-top: 16px;
   border-top: 1px solid var(--line);
 }
 
-.row {
-  display: grid;
-  grid-template-columns: 120px minmax(220px, 1fr) 180px 120px;
+.account-item {
   border-bottom: 1px solid var(--line);
   padding: 14px 0;
 }
 
-.row.header {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.provider-name {
-  text-transform: capitalize;
-}
-
-.row strong,
-.row small {
+.account-item strong,
+.account-item small {
   display: block;
 }
 
@@ -201,16 +225,13 @@ button:hover,
 
 @media (max-width: 760px) {
   .topbar,
-  .provider {
+  .bridge-card,
+  .account-item {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .provider-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .row {
+  .bridge-grid {
     grid-template-columns: 1fr;
   }
 }
