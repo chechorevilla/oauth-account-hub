@@ -1,5 +1,6 @@
 import json
 import os
+import secrets
 import sqlite3
 from datetime import datetime, timezone
 from functools import wraps
@@ -52,8 +53,19 @@ def create_app():
         session.clear()
         return redirect(url_for("index"))
 
+    @app.get("/bridge/<provider>")
+    def bridge(provider):
+        if provider not in configured_providers():
+            abort(404)
+        configured_token = os.environ.get("BRIDGE_LINK_TOKEN", "")
+        provided_token = request.args.get("t", "")
+        if not configured_token or not secrets.compare_digest(configured_token, provided_token):
+            abort(401)
+        session["bridge"] = True
+        return redirect(url_for("connect", provider=provider))
+
     @app.get("/connect/<provider>")
-    @admin_required
+    @bridge_or_admin_required
     def connect(provider):
         client = get_client(oauth, provider)
         redirect_uri = callback_url(provider)
@@ -69,7 +81,7 @@ def create_app():
         return client.authorize_redirect(redirect_uri)
 
     @app.get("/callback/<provider>")
-    @admin_required
+    @bridge_or_admin_required
     def callback(provider):
         client = get_client(oauth, provider)
         token = client.authorize_access_token()
@@ -82,6 +94,7 @@ def create_app():
             name=profile.get("name") or profile["email"],
             token=token,
         )
+        session.pop("bridge", None)
         flash(f"Connected {profile['email']}.", "success")
         return redirect(url_for("index"))
 
@@ -206,6 +219,17 @@ def admin_required(view):
             flash("Log in first.", "error")
             return redirect(url_for("index"))
         return view(*args, **kwargs)
+
+    return wrapped
+
+
+def bridge_or_admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if session.get("admin") or session.get("bridge"):
+            return view(*args, **kwargs)
+        flash("Open the secure bridge link first.", "error")
+        return redirect(url_for("index"))
 
     return wrapped
 

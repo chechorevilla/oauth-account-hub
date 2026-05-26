@@ -40,6 +40,17 @@ https://oauth-hub.apps.railpush.com/callback/microsoft
 https://oauth-hub.apps.railpush.com/callback/github
 ```
 
+## Bridge links
+
+Set `BRIDGE_LINK_TOKEN` and send Sergio provider-specific bridge links instead of asking for provider credentials in the UI:
+
+```text
+https://oauth-hub.apps.railpush.com/bridge/google?t=<BRIDGE_LINK_TOKEN>
+https://oauth-hub.apps.railpush.com/bridge/microsoft?t=<BRIDGE_LINK_TOKEN>
+```
+
+The bridge link starts the provider login and the callback stores the encrypted OAuth token locally.
+
 ## Google setup
 
 1. Create OAuth credentials in Google Cloud Console.
@@ -90,6 +101,7 @@ Authorization: Bearer <AGENT_API_KEY>
 
 - Do not commit `.env` or `accounts.sqlite3`.
 - Set `ADMIN_PASSWORD` before exposing this app publicly.
+- Set `BRIDGE_LINK_TOKEN` before sending direct bridge links.
 - Set `AGENT_API_KEY` to a long random value before using agent token access.
 - Tokens are encrypted using `TOKEN_ENCRYPTION_KEY`; losing the key makes stored tokens unreadable.
 - Disconnect removes local tokens only. Provider-side access should also be revoked from Google/Microsoft security settings when needed.
