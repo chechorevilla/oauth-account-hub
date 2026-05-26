@@ -30,7 +30,12 @@ def create_app():
 
     @app.get("/")
     def index():
-        return render_template("index.html", accounts=list_accounts(), providers=provider_status())
+        return render_template(
+            "index.html",
+            accounts=list_accounts(),
+            providers=provider_status(),
+            provider_configs=list_provider_configs(),
+        )
 
     @app.post("/admin/login")
     def admin_login():
@@ -87,6 +92,20 @@ def create_app():
         flash("Account disconnected locally. Revoke access in the provider console if needed.", "success")
         return redirect(url_for("index"))
 
+    @app.post("/settings/<provider>")
+    @admin_required
+    def save_provider_config(provider):
+        if provider not in configured_providers():
+            abort(404)
+        client_id = request.form.get("client_id", "").strip()
+        client_secret = request.form.get("client_secret", "").strip()
+        if not client_id or not client_secret:
+            flash("Client ID and Client Secret are required.", "error")
+            return redirect(url_for("index"))
+        upsert_provider_config(provider, client_id, client_secret)
+        flash(f"{provider.title()} OAuth configured. You can connect it now.", "success")
+        return redirect(url_for("index"))
+
     @app.get("/api/accounts/<provider>/token")
     @agent_api_required
     def account_token(provider):
@@ -114,44 +133,60 @@ def create_app():
 
 
 def register_oauth_clients(oauth):
-    if os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"):
+    init_db()
+    for provider in configured_providers():
+        register_provider_client(oauth, provider)
+
+
+def register_provider_client(oauth, provider):
+    credentials = provider_credentials(provider)
+    if not credentials:
+        return
+
+    client_id = credentials["client_id"]
+    client_secret = credentials["client_secret"]
+
+    if provider == "google":
         oauth.register(
             name="google",
-            client_id=os.environ["GOOGLE_CLIENT_ID"],
-            client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
+            client_id=client_id,
+            client_secret=client_secret,
             server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
             client_kwargs={
                 "scope": "openid email profile https://www.googleapis.com/auth/gmail.readonly"
             },
         )
+        return
 
-    if os.environ.get("MICROSOFT_CLIENT_ID") and os.environ.get("MICROSOFT_CLIENT_SECRET"):
+    if provider == "microsoft":
         tenant = os.environ.get("MICROSOFT_TENANT", "common")
         oauth.register(
             name="microsoft",
-            client_id=os.environ["MICROSOFT_CLIENT_ID"],
-            client_secret=os.environ["MICROSOFT_CLIENT_SECRET"],
+            client_id=client_id,
+            client_secret=client_secret,
             access_token_url=f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
             authorize_url=f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize",
             api_base_url="https://graph.microsoft.com/v1.0/",
             client_kwargs={"scope": "openid email profile offline_access User.Read Mail.Read"},
         )
+        return
 
-    if os.environ.get("GITHUB_CLIENT_ID") and os.environ.get("GITHUB_CLIENT_SECRET"):
-        oauth.register(
-            name="github",
-            client_id=os.environ["GITHUB_CLIENT_ID"],
-            client_secret=os.environ["GITHUB_CLIENT_SECRET"],
-            access_token_url="https://github.com/login/oauth/access_token",
-            authorize_url="https://github.com/login/oauth/authorize",
-            api_base_url="https://api.github.com/",
-            client_kwargs={"scope": "read:user user:email repo"},
-        )
+    oauth.register(
+        name="github",
+        client_id=client_id,
+        client_secret=client_secret,
+        access_token_url="https://github.com/login/oauth/access_token",
+        authorize_url="https://github.com/login/oauth/authorize",
+        api_base_url="https://api.github.com/",
+        client_kwargs={"scope": "read:user user:email repo"},
+    )
 
 
 def get_client(oauth, provider):
     if provider not in configured_providers():
         abort(404)
+    if not oauth.create_client(provider):
+        register_provider_client(oauth, provider)
     client = oauth.create_client(provider)
     if not client:
         flash(f"{provider.title()} OAuth is not configured yet.", "error")
@@ -192,11 +227,7 @@ def configured_providers():
 
 
 def provider_status():
-    return {
-        "google": bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET")),
-        "microsoft": bool(os.environ.get("MICROSOFT_CLIENT_ID") and os.environ.get("MICROSOFT_CLIENT_SECRET")),
-        "github": bool(os.environ.get("GITHUB_CLIENT_ID") and os.environ.get("GITHUB_CLIENT_SECRET")),
-    }
+    return {provider: bool(provider_credentials(provider)) for provider in configured_providers()}
 
 
 def fetch_profile(provider, token):
@@ -212,9 +243,9 @@ def fetch_profile(provider, token):
 
     if provider == "microsoft":
         response = requests.get(
-        "https://graph.microsoft.com/v1.0/me",
-        headers={"Authorization": f"Bearer {token['access_token']}"},
-        timeout=15,
+            "https://graph.microsoft.com/v1.0/me",
+            headers={"Authorization": f"Bearer {token['access_token']}"},
+            timeout=15,
         )
         response.raise_for_status()
         data = response.json()
@@ -261,6 +292,16 @@ def init_db():
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS oauth_provider_configs (
+                provider TEXT PRIMARY KEY,
+                client_id TEXT NOT NULL,
+                encrypted_client_secret TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
 
 
 def db():
@@ -285,6 +326,79 @@ def decrypt_token(encrypted):
         return json.loads(cipher().decrypt(encrypted.encode()).decode())
     except InvalidToken:
         return None
+
+
+def encrypt_secret(secret):
+    return cipher().encrypt(secret.encode()).decode()
+
+
+def decrypt_secret(encrypted):
+    try:
+        return cipher().decrypt(encrypted.encode()).decode()
+    except InvalidToken:
+        return None
+
+
+def env_provider_credentials(provider):
+    prefix = provider.upper()
+    client_id = os.environ.get(f"{prefix}_CLIENT_ID")
+    client_secret = os.environ.get(f"{prefix}_CLIENT_SECRET")
+    if client_id and client_secret:
+        return {"client_id": client_id, "client_secret": client_secret, "source": "environment"}
+    return None
+
+
+def provider_credentials(provider):
+    credentials = env_provider_credentials(provider)
+    if credentials:
+        return credentials
+
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT client_id, encrypted_client_secret
+            FROM oauth_provider_configs
+            WHERE provider = ?
+            """,
+            (provider,),
+        ).fetchone()
+
+    if not row:
+        return None
+
+    client_secret = decrypt_secret(row["encrypted_client_secret"])
+    if not client_secret:
+        return None
+    return {"client_id": row["client_id"], "client_secret": client_secret, "source": "database"}
+
+
+def upsert_provider_config(provider, client_id, client_secret):
+    now = datetime.now(timezone.utc).isoformat()
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO oauth_provider_configs
+                (provider, client_id, encrypted_client_secret, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(provider) DO UPDATE SET
+                client_id = excluded.client_id,
+                encrypted_client_secret = excluded.encrypted_client_secret,
+                updated_at = excluded.updated_at
+            """,
+            (provider, client_id, encrypt_secret(client_secret), now),
+        )
+
+
+def list_provider_configs():
+    configs = {}
+    for provider in configured_providers():
+        credentials = provider_credentials(provider)
+        configs[provider] = {
+            "configured": bool(credentials),
+            "source": credentials["source"] if credentials else None,
+            "client_id": credentials["client_id"] if credentials else "",
+        }
+    return configs
 
 
 def upsert_account(provider, external_id, email, name, token):
