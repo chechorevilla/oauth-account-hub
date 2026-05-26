@@ -87,6 +87,25 @@ def create_app():
         flash("Account disconnected locally. Revoke access in the provider console if needed.", "success")
         return redirect(url_for("index"))
 
+    @app.get("/api/accounts/<provider>/token")
+    @agent_api_required
+    def account_token(provider):
+        if provider not in configured_providers():
+            abort(404)
+        account = latest_account(provider)
+        if not account:
+            return {"error": f"No {provider} account connected."}, 404
+        token = decrypt_token(account["encrypted_token"])
+        if not token:
+            return {"error": "Stored token cannot be decrypted."}, 500
+        return {
+            "provider": account["provider"],
+            "email": account["email"],
+            "name": account["name"],
+            "external_id": account["external_id"],
+            "token": token,
+        }
+
     @app.get("/health")
     def health():
         return {"ok": True}
@@ -118,9 +137,20 @@ def register_oauth_clients(oauth):
             client_kwargs={"scope": "openid email profile offline_access User.Read Mail.Read"},
         )
 
+    if os.environ.get("GITHUB_CLIENT_ID") and os.environ.get("GITHUB_CLIENT_SECRET"):
+        oauth.register(
+            name="github",
+            client_id=os.environ["GITHUB_CLIENT_ID"],
+            client_secret=os.environ["GITHUB_CLIENT_SECRET"],
+            access_token_url="https://github.com/login/oauth/access_token",
+            authorize_url="https://github.com/login/oauth/authorize",
+            api_base_url="https://api.github.com/",
+            client_kwargs={"scope": "read:user user:email repo"},
+        )
+
 
 def get_client(oauth, provider):
-    if provider not in {"google", "microsoft"}:
+    if provider not in configured_providers():
         abort(404)
     client = oauth.create_client(provider)
     if not client:
@@ -145,10 +175,27 @@ def admin_required(view):
     return wrapped
 
 
+def agent_api_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        configured_key = os.environ.get("AGENT_API_KEY")
+        provided_key = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        if not configured_key or provided_key != configured_key:
+            abort(401)
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def configured_providers():
+    return {"google", "microsoft", "github"}
+
+
 def provider_status():
     return {
         "google": bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET")),
         "microsoft": bool(os.environ.get("MICROSOFT_CLIENT_ID") and os.environ.get("MICROSOFT_CLIENT_SECRET")),
+        "github": bool(os.environ.get("GITHUB_CLIENT_ID") and os.environ.get("GITHUB_CLIENT_SECRET")),
     }
 
 
@@ -163,15 +210,38 @@ def fetch_profile(provider, token):
         data = response.json()
         return {"id": data["sub"], "email": data["email"], "name": data.get("name")}
 
-    response = requests.get(
+    if provider == "microsoft":
+        response = requests.get(
         "https://graph.microsoft.com/v1.0/me",
         headers={"Authorization": f"Bearer {token['access_token']}"},
         timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json()
+        email = data.get("mail") or data.get("userPrincipalName")
+        return {"id": data["id"], "email": email, "name": data.get("displayName")}
+
+    profile_response = requests.get(
+        "https://api.github.com/user",
+        headers={"Authorization": f"Bearer {token['access_token']}", "Accept": "application/vnd.github+json"},
+        timeout=15,
     )
-    response.raise_for_status()
-    data = response.json()
-    email = data.get("mail") or data.get("userPrincipalName")
-    return {"id": data["id"], "email": email, "name": data.get("displayName")}
+    profile_response.raise_for_status()
+    profile = profile_response.json()
+
+    email = profile.get("email")
+    if not email:
+        email_response = requests.get(
+            "https://api.github.com/user/emails",
+            headers={"Authorization": f"Bearer {token['access_token']}", "Accept": "application/vnd.github+json"},
+            timeout=15,
+        )
+        email_response.raise_for_status()
+        emails = email_response.json()
+        primary = next((item for item in emails if item.get("primary")), None)
+        email = (primary or emails[0]).get("email") if emails else f"{profile['login']}@users.noreply.github.com"
+
+    return {"id": str(profile["id"]), "email": email, "name": profile.get("name") or profile["login"]}
 
 
 def init_db():
@@ -245,6 +315,21 @@ def list_accounts():
             """
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def latest_account(provider):
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT provider, external_id, email, name, encrypted_token, updated_at
+            FROM connected_accounts
+            WHERE provider = ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (provider,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def delete_account(account_id):

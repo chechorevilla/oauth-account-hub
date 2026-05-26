@@ -63,6 +63,18 @@
               <span class="disabled">Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET</span>
             {% endif %}
           </article>
+
+          <article class="panel provider">
+            <div>
+              <h2>GitHub</h2>
+              <p>Repository access for assistant workflows.</p>
+            </div>
+            {% if providers.github %}
+              <a class="button" href="{{ url_for('connect', provider='github') }}">Connect GitHub</a>
+            {% else %}
+              <span class="disabled">Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET</span>
+            {% endif %}
+          </article>
         </section>
 
         <section class="panel accounts">

@@ -1,6 +1,6 @@
 # OAuth Account Hub
 
-Small Flask app to connect multiple Google and Microsoft email accounts using OAuth. It stores connected accounts in SQLite and encrypts OAuth tokens at rest.
+Small Flask app to connect multiple Google, Microsoft, and GitHub accounts using OAuth. It stores connected accounts in SQLite and encrypts OAuth tokens at rest.
 
 ## Run locally
 
@@ -29,6 +29,7 @@ Set the provider redirect URLs to:
 ```text
 http://localhost:5050/callback/google
 http://localhost:5050/callback/microsoft
+http://localhost:5050/callback/github
 ```
 
 For deployment, set `BASE_URL` to the public HTTPS URL and use:
@@ -36,6 +37,7 @@ For deployment, set `BASE_URL` to the public HTTPS URL and use:
 ```text
 https://oauth-hub.apps.railpush.com/callback/google
 https://oauth-hub.apps.railpush.com/callback/microsoft
+https://oauth-hub.apps.railpush.com/callback/github
 ```
 
 ## Google setup
@@ -65,9 +67,29 @@ Current scopes:
 openid email profile offline_access User.Read Mail.Read
 ```
 
+## GitHub setup
+
+1. Create an OAuth App in GitHub Developer settings.
+2. Homepage URL: `https://oauth-hub.apps.railpush.com`
+3. Authorization callback URL: `https://oauth-hub.apps.railpush.com/callback/github`
+4. Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
+
+Current scopes:
+
+```text
+read:user user:email repo
+```
+
+The app also exposes `GET /api/accounts/github/token` for agent use. It requires:
+
+```text
+Authorization: Bearer <AGENT_API_KEY>
+```
+
 ## Security notes
 
 - Do not commit `.env` or `accounts.sqlite3`.
 - Set `ADMIN_PASSWORD` before exposing this app publicly.
+- Set `AGENT_API_KEY` to a long random value before using agent token access.
 - Tokens are encrypted using `TOKEN_ENCRYPTION_KEY`; losing the key makes stored tokens unreadable.
 - Disconnect removes local tokens only. Provider-side access should also be revoked from Google/Microsoft security settings when needed.
