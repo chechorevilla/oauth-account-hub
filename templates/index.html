@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Account Hub</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">OAuth Account Hub</p>
+          <h1>Connected accounts</h1>
+        </div>
+        {% if session.admin %}
+          <form method="post" action="{{ url_for('admin_logout') }}">
+            <button class="ghost" type="submit">Log out</button>
+          </form>
+        {% endif %}
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <section class="messages">
+            {% for category, message in messages %}
+              <div class="message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </section>
+        {% endif %}
+      {% endwith %}
+
+      {% if not session.admin %}
+        <section class="panel login">
+          <h2>Admin access</h2>
+          <form method="post" action="{{ url_for('admin_login') }}">
+            <input name="password" type="password" placeholder="Admin password if configured">
+            <button type="submit">Enter</button>
+          </form>
+        </section>
+      {% else %}
+        <section class="provider-grid">
+          <article class="panel provider">
+            <div>
+              <h2>Google</h2>
+              <p>Gmail and Google profile OAuth.</p>
+            </div>
+            {% if providers.google %}
+              <a class="button" href="{{ url_for('connect', provider='google') }}">Connect Google</a>
+            {% else %}
+              <span class="disabled">Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET</span>
+            {% endif %}
+          </article>
+
+          <article class="panel provider">
+            <div>
+              <h2>Microsoft</h2>
+              <p>Outlook / Microsoft 365 OAuth.</p>
+            </div>
+            {% if providers.microsoft %}
+              <a class="button" href="{{ url_for('connect', provider='microsoft') }}">Connect Microsoft</a>
+            {% else %}
+              <span class="disabled">Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET</span>
+            {% endif %}
+          </article>
+        </section>
+
+        <section class="panel accounts">
+          <div class="section-head">
+            <h2>Accounts</h2>
+            <span>{{ accounts|length }} connected</span>
+          </div>
+
+          {% if accounts %}
+            <div class="table">
+              <div class="row header">
+                <span>Provider</span>
+                <span>Email</span>
+                <span>Updated</span>
+                <span></span>
+              </div>
+              {% for account in accounts %}
+                <div class="row">
+                  <span class="provider-name">{{ account.provider }}</span>
+                  <span>
+                    <strong>{{ account.email }}</strong>
+                    <small>{{ account.name or account.external_id }}</small>
+                  </span>
+                  <span>{{ account.updated_at[:19].replace('T', ' ') }}</span>
+                  <form method="post" action="{{ url_for('disconnect', account_id=account.id) }}">
+                    <button class="danger" type="submit">Disconnect</button>
+                  </form>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty">No accounts connected yet.</p>
+          {% endif %}
+        </section>
+      {% endif %}
+    </main>
+  </body>
+</html>
